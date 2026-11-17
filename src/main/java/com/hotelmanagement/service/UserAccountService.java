@@ -112,7 +112,7 @@ public class UserAccountService {
         User user = userRepository.findLockedById(id)
                 .orElseThrow(() -> new ResourceNotFoundException("Usuário não encontrado."));
         if (user.getRole() == UserRole.RECEPTIONIST && user.isActive()
-                && receptionists.stream().filter(User::isActive).count() <= 1) {
+                && receptionists.stream().filter(receptionist -> receptionist.isActive()).count() <= 1) {
             throw new ResourceConflictException("O último recepcionista ativo não pode ser excluído.");
         }
         if (reservationRepository.existsByCustomer_User_Id(id)) {

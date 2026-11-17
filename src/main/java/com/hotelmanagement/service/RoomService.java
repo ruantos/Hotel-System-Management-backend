@@ -118,6 +118,6 @@ public class RoomService {
                 room.getDescription(), room.getCapacity(), room.getPricePerNight(),
                 room.isActive(), room.getCreatedAt(), room.getAmenities().stream()
                         .map(amenity -> new AmenityResponse(amenity.getId(), amenity.getName(), amenity.getDescription()))
-                        .sorted(Comparator.comparing(AmenityResponse::id)).toList());
+                        .sorted(Comparator.comparing(amenity -> amenity.id())).toList());
     }
 }
