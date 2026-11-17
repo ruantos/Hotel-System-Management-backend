@@ -127,8 +127,37 @@ ou renomeado será cadastrado novamente no próximo início.
 🚧 **Em desenvolvimento**
 
 Estão implementadas a modelagem de quartos e tipos, a inicialização dos tipos
-e as APIs de CRUD de quartos e tipos de quarto. As demais funcionalidades serão
+e as APIs de CRUD de quartos e tipos de quarto. A modelagem de usuários e
+perfis de cliente também está implementada. As demais funcionalidades serão
 implementadas de forma incremental.
+
+## Modelagem de usuários e clientes
+
+`User` representa a identidade de acesso, com `id`, `name`, `email`,
+`passwordHash`, `role` e `active`. A tabela se chama `users`, evitando usar
+`user`, que possui significado especial no PostgreSQL. O e-mail é obrigatório
+e possui restrição de unicidade. `UserRole` contém `CLIENT` e `RECEPTIONIST`,
+persistidos como texto com `EnumType.STRING`.
+
+`CustomerProfile` contém `id`, `user`, `phone` e `document`. O relacionamento
+com `User` é 1:1, por meio de `customer_profile.user_id`, uma chave estrangeira
+obrigatória e única. Um perfil sempre referencia um usuário; um usuário pode
+existir sem perfil, permitindo representar recepcionistas. O vínculo é
+unidirecional, com carregamento `LAZY` e sem exclusão em cascata.
+
+Telefone e documento são opcionais nesta modelagem. O serviço de cadastro
+deverá garantir que usuários clientes tenham um perfil e que recepcionistas
+não recebam esse perfil. A normalização do e-mail, o cálculo do hash da senha,
+a ativação da conta e as validações de cadastro serão implementados nessa etapa.
+O campo `passwordHash` apenas armazena o resultado do hash; não o calcula.
+Nenhuma conta inicial ou endpoint de usuários foi criado nesta etapa.
+
+Quando o PostgreSQL estiver disponível, iniciar a aplicação com `ddl-auto=update`
+deverá criar as tabelas `users` e `customer_profile`. A validação manual do
+esquema deverá confirmar a unicidade de `users.email` e de
+`customer_profile.user_id`, a obrigatoriedade do vínculo e a chave estrangeira
+para `users.id`. A persistência e os fluxos de cadastro serão validados quando
+seus serviços e endpoints estiverem implementados.
 
 ## API de tipos de quarto
 
