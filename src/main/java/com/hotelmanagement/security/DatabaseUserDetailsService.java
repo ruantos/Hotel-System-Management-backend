@@ -24,10 +24,6 @@ public class DatabaseUserDetailsService implements UserDetailsService {
     public UserDetails loadUserByUsername(String email) {
         User user = userRepository.findByEmailIgnoreCase(email.strip().toLowerCase(Locale.ROOT))
                 .orElseThrow(() -> new UsernameNotFoundException("Credenciais inválidas."));
-        return org.springframework.security.core.userdetails.User.withUsername(user.getEmail())
-                .password(user.getPasswordHash())
-                .roles(user.getRole().name())
-                .disabled(!user.isActive())
-                .build();
+        return new HotelUserDetails(user);
     }
 }

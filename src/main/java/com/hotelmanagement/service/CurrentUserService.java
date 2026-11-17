@@ -24,6 +24,10 @@ public class CurrentUserService {
     public UserResponse findByEmail(String email) {
         User user = userRepository.findByEmailIgnoreCase(email)
                 .orElseThrow(() -> new ResourceNotFoundException("Usuário não encontrado."));
+        return toResponse(user);
+    }
+
+    public UserResponse toResponse(User user) {
         CustomerProfileResponse profile = customerProfileRepository.findByUser_Id(user.getId())
                 .map(customer -> new CustomerProfileResponse(customer.getId(),
                         customer.getPhone(), customer.getDocument()))

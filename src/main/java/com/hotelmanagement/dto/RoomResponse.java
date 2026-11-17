@@ -2,6 +2,7 @@ package com.hotelmanagement.dto;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
+import java.util.List;
 
 public record RoomResponse(
         Long id,
@@ -12,6 +13,7 @@ public record RoomResponse(
         int capacity,
         BigDecimal pricePerNight,
         boolean active,
-        LocalDateTime createdAt
+        LocalDateTime createdAt,
+        List<AmenityResponse> amenities
 ) {
 }

@@ -8,6 +8,7 @@ import java.util.Set;
 
 import com.hotelmanagement.dto.CreateReservationRequest;
 import com.hotelmanagement.dto.ReservationResponse;
+import com.hotelmanagement.dto.RescheduleReservationRequest;
 import com.hotelmanagement.dto.RoomAvailabilityResponse;
 import com.hotelmanagement.entity.CustomerProfile;
 import com.hotelmanagement.entity.Reservation;
@@ -133,6 +134,30 @@ public class ReservationService {
         boolean available = room.isActive() && !reservationRepository.existsOverlapping(
                 roomId, checkIn, checkOut, BLOCKING_STATUSES, 0L);
         return new RoomAvailabilityResponse(roomId, checkIn, checkOut, available);
+    }
+
+    @Transactional
+    public ReservationResponse reschedule(String email, Long id, RescheduleReservationRequest request) {
+        User user = getActiveUser(email);
+        Reservation reservation = getLockedReservation(id);
+        requireAccess(user, reservation);
+        if (reservation.getStatus() == ReservationStatus.CANCELLED) {
+            throw new ResourceConflictException("Reservas canceladas não podem ter as datas alteradas.");
+        }
+        if (!LocalDate.now(clock).isBefore(reservation.getCheckInDate())) {
+            throw new ResourceConflictException("As datas só podem ser alteradas antes do dia da entrada atual.");
+        }
+        validateDates(request.checkInDate(), request.checkOutDate());
+        Room room = getLockedRoom(reservation.getRoom().getId());
+        validateRoom(room, reservation.getGuestCount());
+        requireAvailability(room.getId(), request.checkInDate(), request.checkOutDate(), id);
+        if (!reservation.getCheckInDate().equals(request.checkInDate())
+                || !reservation.getCheckOutDate().equals(request.checkOutDate())) {
+            reservation.setCheckInDate(request.checkInDate());
+            reservation.setCheckOutDate(request.checkOutDate());
+            reservation.setStatus(ReservationStatus.PENDING);
+        }
+        return toResponse(reservationRepository.saveAndFlush(reservation));
     }
 
     private User getActiveUser(String email) {

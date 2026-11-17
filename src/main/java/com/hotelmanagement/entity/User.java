@@ -34,6 +34,9 @@ public class User {
     @Column(nullable = false)
     private boolean active;
 
+    @Column(nullable = false, columnDefinition = "bigint default 0")
+    private long sessionVersion;
+
     public User() {
     }
 
@@ -79,5 +82,13 @@ public class User {
 
     public void setActive(boolean active) {
         this.active = active;
+    }
+
+    public long getSessionVersion() {
+        return sessionVersion;
+    }
+
+    public void invalidateSessions() {
+        sessionVersion++;
     }
 }

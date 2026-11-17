@@ -1,6 +1,7 @@
 package com.hotelmanagement.dto;
 
 import java.math.BigDecimal;
+import java.util.Set;
 
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.Digits;
@@ -27,6 +28,13 @@ public record RoomRequest(
         @Digits(integer = 8, fraction = 2, message = "A diária deve ter até 8 dígitos inteiros e 2 decimais.")
         BigDecimal pricePerNight,
         @NotNull(message = "Informe se o quarto está ativo.")
-        Boolean active
+        Boolean active,
+        Set<@NotNull @Positive Long> amenityIds
 ) {
+
+    public RoomRequest {
+        if (amenityIds == null) {
+            amenityIds = Set.of();
+        }
+    }
 }

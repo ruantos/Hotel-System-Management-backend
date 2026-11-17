@@ -2,6 +2,8 @@ package com.hotelmanagement.entity;
 
 import java.time.LocalDateTime;
 import java.math.BigDecimal;
+import java.util.HashSet;
+import java.util.Set;
 
 import jakarta.persistence.*;
 
@@ -35,6 +37,12 @@ public class Room {
 
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
+
+    @ManyToMany
+    @JoinTable(name = "room_amenity",
+            joinColumns = @JoinColumn(name = "room_id"),
+            inverseJoinColumns = @JoinColumn(name = "amenity_id"))
+    private Set<Amenity> amenities = new HashSet<>();
 
     public Room() {
 
@@ -107,5 +115,13 @@ public class Room {
 
     public LocalDateTime getCreatedAt() {
         return createdAt;
+    }
+
+    public Set<Amenity> getAmenities() {
+        return amenities;
+    }
+
+    public void setAmenities(Set<Amenity> amenities) {
+        this.amenities = amenities;
     }
 }

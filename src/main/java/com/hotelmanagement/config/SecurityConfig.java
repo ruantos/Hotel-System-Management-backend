@@ -3,6 +3,8 @@ package com.hotelmanagement.config;
 import java.util.List;
 
 import com.hotelmanagement.security.SecurityErrorHandler;
+import com.hotelmanagement.security.SessionValidationFilter;
+import com.hotelmanagement.repository.UserRepository;
 import jakarta.servlet.DispatcherType;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.beans.factory.annotation.Value;
@@ -12,6 +14,7 @@ import org.springframework.http.HttpMethod;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.access.intercept.AuthorizationFilter;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
@@ -20,7 +23,8 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 public class SecurityConfig {
 
     @Bean
-    public SecurityFilterChain securityFilterChain(HttpSecurity http, SecurityErrorHandler errors)
+    public SecurityFilterChain securityFilterChain(HttpSecurity http, SecurityErrorHandler errors,
+            UserRepository userRepository)
             throws Exception {
         return http
                 .cors(Customizer.withDefaults())
@@ -30,19 +34,25 @@ public class SecurityConfig {
                 .authorizeHttpRequests(auth -> auth
                         .dispatcherTypeMatchers(DispatcherType.ERROR).permitAll()
                         .requestMatchers(HttpMethod.GET, "/swagger-ui.html", "/swagger-ui/**",
-                                "/v3/api-docs", "/v3/api-docs/**", "/v3/api-docs.yaml").permitAll()
+                                "/swagger-ui-generated.html", "/docs/**", "/v3/api-docs",
+                                "/v3/api-docs/**", "/v3/api-docs.yaml").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/auth/csrf").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/auth/register").permitAll()
                         .requestMatchers(HttpMethod.GET, "/api/rooms", "/api/rooms/**",
-                                "/api/room-types", "/api/room-types/**").permitAll()
+                                "/api/room-types", "/api/room-types/**",
+                                "/api/amenities", "/api/amenities/**").permitAll()
                         .requestMatchers("/api/rooms", "/api/rooms/**",
-                                "/api/room-types", "/api/room-types/**").hasRole("RECEPTIONIST")
+                                "/api/room-types", "/api/room-types/**",
+                                "/api/amenities", "/api/amenities/**").hasRole("RECEPTIONIST")
+                        .requestMatchers("/api/users/me", "/api/users/me/password").authenticated()
+                        .requestMatchers("/api/users", "/api/users/**").hasRole("RECEPTIONIST")
                         .requestMatchers(HttpMethod.POST, "/api/reservations").hasRole("CLIENT")
                         .requestMatchers(HttpMethod.PUT, "/api/reservations/*/approve").hasRole("RECEPTIONIST")
                         .requestMatchers(HttpMethod.PUT, "/api/reservations/*/cancel").hasRole("CLIENT")
                         .requestMatchers("/api/reservations", "/api/reservations/**")
                                 .hasAnyRole("CLIENT", "RECEPTIONIST")
                         .anyRequest().authenticated())
+                .addFilterBefore(new SessionValidationFilter(userRepository, errors), AuthorizationFilter.class)
                 .exceptionHandling(exceptions -> exceptions
                         .authenticationEntryPoint(errors)
                         .accessDeniedHandler(errors))

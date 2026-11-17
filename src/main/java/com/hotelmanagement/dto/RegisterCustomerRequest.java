@@ -3,6 +3,7 @@ package com.hotelmanagement.dto;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
+import io.swagger.v3.oas.annotations.media.Schema;
 
 public record RegisterCustomerRequest(
         @NotBlank(message = "O nome é obrigatório.")
@@ -14,6 +15,7 @@ public record RegisterCustomerRequest(
         String email,
         @NotBlank(message = "A senha é obrigatória.")
         @Size(min = 8, max = 128, message = "A senha deve ter entre 8 e 128 caracteres.")
+        @Schema(format = "password", accessMode = Schema.AccessMode.WRITE_ONLY)
         String password,
         @Size(max = 255, message = "O telefone deve ter no máximo 255 caracteres.")
         String phone,

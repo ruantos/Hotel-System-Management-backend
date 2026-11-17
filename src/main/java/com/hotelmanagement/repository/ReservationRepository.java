@@ -20,6 +20,8 @@ public interface ReservationRepository extends JpaRepository<Reservation, Long> 
 
     boolean existsByRoom_Id(Long roomId);
 
+    boolean existsByCustomer_User_Id(Long userId);
+
     List<Reservation> findByCustomer_User_IdOrderById(Long userId);
 
     @Lock(LockModeType.PESSIMISTIC_WRITE)

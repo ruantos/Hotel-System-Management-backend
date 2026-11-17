@@ -5,6 +5,7 @@ import java.util.List;
 
 import com.hotelmanagement.dto.CreateReservationRequest;
 import com.hotelmanagement.dto.ReservationResponse;
+import com.hotelmanagement.dto.RescheduleReservationRequest;
 import com.hotelmanagement.service.ReservationService;
 import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
@@ -56,5 +57,11 @@ public class ReservationController {
     @PutMapping("/{id}/cancel")
     public ReservationResponse cancel(@AuthenticationPrincipal UserDetails user, @PathVariable Long id) {
         return reservationService.cancel(user.getUsername(), id);
+    }
+
+    @PutMapping("/{id}/dates")
+    public ReservationResponse reschedule(@AuthenticationPrincipal UserDetails user, @PathVariable Long id,
+            @Valid @RequestBody RescheduleReservationRequest request) {
+        return reservationService.reschedule(user.getUsername(), id, request);
     }
 }

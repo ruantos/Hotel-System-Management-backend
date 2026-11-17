@@ -13,6 +13,8 @@ public interface RoomRepository extends JpaRepository<Room, Long> {
 
     boolean existsByType_Id(Long typeId);
 
+    boolean existsByAmenities_Id(Long amenityId);
+
     boolean existsByNumber(int number);
 
     boolean existsByNumberAndIdNot(int number, Long id);

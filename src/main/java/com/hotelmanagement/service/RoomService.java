@@ -2,10 +2,14 @@ package com.hotelmanagement.service;
 
 import java.util.List;
 import java.util.Set;
+import java.util.HashSet;
+import java.util.Comparator;
 
 import com.hotelmanagement.dto.RoomRequest;
 import com.hotelmanagement.dto.RoomResponse;
 import com.hotelmanagement.dto.RoomTypeResponse;
+import com.hotelmanagement.dto.AmenityResponse;
+import com.hotelmanagement.repository.AmenityRepository;
 import com.hotelmanagement.entity.Room;
 import com.hotelmanagement.entity.RoomType;
 import com.hotelmanagement.enums.ReservationStatus;
@@ -26,12 +30,14 @@ public class RoomService {
     private final RoomRepository roomRepository;
     private final RoomTypeRepository roomTypeRepository;
     private final ReservationRepository reservationRepository;
+    private final AmenityRepository amenityRepository;
 
     public RoomService(RoomRepository roomRepository, RoomTypeRepository roomTypeRepository,
-            ReservationRepository reservationRepository) {
+            ReservationRepository reservationRepository, AmenityRepository amenityRepository) {
         this.roomRepository = roomRepository;
         this.roomTypeRepository = roomTypeRepository;
         this.reservationRepository = reservationRepository;
+        this.amenityRepository = amenityRepository;
     }
 
     public List<RoomResponse> findAll() {
@@ -91,6 +97,10 @@ public class RoomService {
     private void applyRequest(Room room, RoomRequest request) {
         RoomType type = roomTypeRepository.findById(request.typeId())
                 .orElseThrow(() -> new ResourceNotFoundException("Tipo de quarto não encontrado."));
+        var amenities = amenityRepository.findAllById(request.amenityIds());
+        if (amenities.size() != request.amenityIds().size()) {
+            throw new ResourceNotFoundException("Uma ou mais características de quarto não foram encontradas.");
+        }
         room.setName(request.name());
         room.setNumber(request.number());
         room.setType(type);
@@ -98,6 +108,7 @@ public class RoomService {
         room.setCapacity(request.capacity());
         room.setPricePerNight(request.pricePerNight());
         room.setActive(request.active());
+        room.setAmenities(new HashSet<>(amenities));
     }
 
     private RoomResponse toResponse(Room room) {
@@ -105,6 +116,8 @@ public class RoomService {
         RoomTypeResponse typeResponse = new RoomTypeResponse(type.getId(), type.getName(), type.getDescription());
         return new RoomResponse(room.getId(), room.getName(), room.getNumber(), typeResponse,
                 room.getDescription(), room.getCapacity(), room.getPricePerNight(),
-                room.isActive(), room.getCreatedAt());
+                room.isActive(), room.getCreatedAt(), room.getAmenities().stream()
+                        .map(amenity -> new AmenityResponse(amenity.getId(), amenity.getName(), amenity.getDescription()))
+                        .sorted(Comparator.comparing(AmenityResponse::id)).toList());
     }
 }
