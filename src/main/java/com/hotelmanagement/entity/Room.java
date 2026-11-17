@@ -18,9 +18,11 @@ public class Room {
     @Column(nullable = false, unique = true)
     private int number;
 
-    @Enumerated(EnumType.STRING)
-    @Column(nullable = false)
+    @ManyToOne(fetch = FetchType.LAZY, optional = false)
+    @JoinColumn(name = "room_type_id", nullable = false)
     private RoomType type;
+
+    private String description;
 
     @Column(nullable = false)
     private int capacity;
@@ -69,6 +71,14 @@ public class Room {
 
     public void setType(RoomType type) {
         this.type = type;
+    }
+
+    public String getDescription() {
+        return description;
+    }
+
+    public void setDescription(String description) {
+        this.description = description;
     }
 
     public int getCapacity() {
