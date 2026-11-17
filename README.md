@@ -93,15 +93,27 @@ http://localhost:8080
 
 ## Documentação da API
 
-O Swagger/OpenAPI será utilizado para documentar e testar os endpoints da API REST.
+O projeto utiliza `springdoc-openapi-starter-webmvc-ui` 3.2.0 para gerar a
+documentação básica a partir dos controllers e DTOs.
 
-O endereço da interface do Swagger será adicionado após a configuração da documentação da API.
+Com a aplicação iniciada e conectada ao PostgreSQL, acesse:
+
+- Swagger UI: `http://localhost:8080/swagger-ui.html`.
+- OpenAPI JSON: `http://localhost:8080/v3/api-docs`.
+
+As rotas da documentação são públicas. As regras de autenticação e CSRF dos
+endpoints continuam valendo. Descrições detalhadas, documentação dos filtros
+de login/logout e integração da interface com CSRF serão complementadas depois.
 
 ## Banco de Dados
 
-O projeto utiliza PostgreSQL persistente remoto. Antes de executar, configure
-as variáveis de ambiente `DB_URL`, `DB_USERNAME` e `DB_PASSWORD`.
-A URL segue o formato `jdbc:postgresql://<host>:5432/<banco>`.
+O projeto utiliza PostgreSQL persistente remoto. Configure `DB_URL` no arquivo
+`.env` na raiz do projeto, usando `.env.example` como referência. Execute a
+aplicação a partir dessa raiz para carregar o arquivo automaticamente.
+A connection string deve usar o formato JDBC, incluindo as credenciais:
+`jdbc:postgresql://<host>/<banco>?user=<usuario>&password=<senha>&sslmode=require`.
+Caracteres especiais no usuário e na senha devem ser codificados para URL.
+`DB_USERNAME` e `DB_PASSWORD` não são mais necessários.
 
 O banco e o usuário devem existir previamente. O usuário precisa ter permissão
 para criar e alterar tabelas no esquema utilizado.
@@ -354,7 +366,7 @@ o campo `errors`, com mensagens por campo. Falhas de integridade retornam
 `409` sem expor detalhes internos do banco.
 
 Escrita exige uma sessão de recepcionista e token CSRF, conforme a seção de
-autenticação. Consultas são públicas. Swagger permanece pendente.
+autenticação. Consultas são públicas. A documentação básica está no Swagger UI.
 
 ### Validação manual do CRUD
 
