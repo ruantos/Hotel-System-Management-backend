@@ -141,7 +141,9 @@ ou renomeado será cadastrado novamente no próximo início.
 Estão implementadas a modelagem de quartos e tipos, a inicialização dos tipos
 e as APIs de CRUD de quartos e tipos de quarto. A modelagem de usuários e
 perfis de cliente, o cadastro público de clientes, o login por sessão e o controle
-de acesso a quartos e tipos também estão implementados. As demais funcionalidades serão
+de acesso a quartos e tipos também estão implementados. O fluxo de reservas inclui
+solicitação, consulta, aprovação, cancelamento e consulta de disponibilidade.
+As demais funcionalidades serão
 implementadas de forma incremental.
 
 ## Modelagem de usuários e clientes
@@ -446,8 +448,9 @@ do próprio quarto é permitido. A restrição única no banco também protege
 contra gravações simultâneas com o mesmo número.
 
 Desativar um quarto é uma atualização com `active: false`; DELETE exclui
-fisicamente o registro. A integração com reservas e suas restrições de exclusão
-será implementada na etapa de reservas. Escrita exige sessão de recepcionista
+fisicamente o registro somente quando não existem reservas vinculadas, inclusive
+canceladas. A redução de capacidade é recusada quando não comporta os hóspedes
+de reservas pendentes ou aprovadas. Escrita exige sessão de recepcionista
 e token CSRF; consultas são públicas.
 
 ### Validação manual dos quartos
@@ -498,3 +501,108 @@ curl -i 'http://localhost:8080/api/rooms/<id>'
 Confirme `204` na exclusão e `404` na consulta. PUT e DELETE com ID
 inexistente também devem retornar `404`; ID não numérico e JSON malformado
 devem retornar `400`.
+
+## Reservas e disponibilidade
+
+| Método | Rota | Permissão e resultado |
+| --- | --- | --- |
+| GET | `/api/rooms/{id}/availability?checkInDate=AAAA-MM-DD&checkOutDate=AAAA-MM-DD` | Público; `200` com `available` |
+| POST | `/api/reservations` | Cliente; `201` com reserva `PENDING` e `Location` |
+| GET | `/api/reservations` | Cliente vê suas reservas; recepcionista vê todas; `200` |
+| GET | `/api/reservations/{id}` | Proprietário ou recepcionista; `200` |
+| PUT | `/api/reservations/{id}/approve` | Recepcionista; `200` com status `APPROVED` |
+| PUT | `/api/reservations/{id}/cancel` | Cliente proprietário; `200` com status `CANCELLED` |
+
+Os endpoints de escrita exigem sessão e token CSRF. Aprovar e cancelar não
+recebem corpo. A criação recebe:
+
+```json
+{
+  "roomId": 1,
+  "checkInDate": "2027-01-10",
+  "checkOutDate": "2027-01-12",
+  "guestCount": 2,
+  "additionalServiceIds": []
+}
+```
+
+Use um quarto real e datas futuras ao validar. `roomId`, datas e `guestCount`
+são obrigatórios. IDs e quantidade de hóspedes devem ser positivos.
+`additionalServiceIds` é opcional; ausente, nulo ou vazio significa sem serviços.
+O cliente é obtido da sessão, e o status é definido pelo servidor. A resposta
+contém `id`, `customerProfileId`, `roomId`, `checkInDate`, `checkOutDate`,
+`guestCount`, `status`, `createdAt` e `additionalServiceIds`.
+
+### Regras implementadas
+
+- Entrada hoje ou em data futura; saída estritamente depois da entrada.
+- Quantidade de hóspedes limitada à capacidade e quarto ativo.
+- Reservas `PENDING` e `APPROVED` bloqueiam disponibilidade; `CANCELLED` não bloqueia.
+- O período inclui a entrada e exclui a saída. Uma nova entrada no mesmo dia
+  da saída anterior é permitida.
+- Apenas `PENDING` pode ser aprovada. A aprovação revalida quarto, capacidade,
+  data de entrada e sobreposição, desconsiderando a própria reserva.
+- O cliente pode cancelar suas reservas pendentes ou aprovadas até o dia
+  anterior à entrada, inclusive. No dia da entrada ou depois, recebe `409`.
+- Aprovar novamente, cancelar novamente ou aprovar uma reserva cancelada retorna `409`.
+- O calendário utiliza `HOTEL_TIME_ZONE`, com padrão `America/Recife`.
+- Acesso a reserva de outro cliente retorna `404`, sem expor seus dados.
+- Quartos com qualquer reserva, inclusive cancelada, não podem ser excluídos.
+  A capacidade não pode ser reduzida abaixo do necessário às reservas bloqueantes.
+
+A consulta pública de disponibilidade é informativa. A criação e a aprovação
+utilizam transações e bloqueio pessimista do quarto (`PESSIMISTIC_WRITE`),
+serializando operações concorrentes daquele quarto antes de verificar períodos.
+A aprovação e o cancelamento também bloqueiam a reserva para proteger as
+transições de status. Alterar ou excluir quartos usa o mesmo bloqueio de quarto.
+
+Datas inválidas e capacidade excedida retornam `400`; entidades inexistentes
+retornam `404`; indisponibilidade, quarto inativo, serviço inativo e transições
+inválidas retornam `409`. Perfil sem permissão retorna `403` e ausência de
+autenticação retorna `401`, observada a exigência de CSRF nas escritas.
+
+`Reservation` referencia `CustomerProfile` e `Room` por `@ManyToOne`.
+`AdditionalService` representa os serviços opcionais e se associa a reservas
+por `@ManyToMany`, com a tabela `reservation_additional_service`. O Hibernate
+prepara as tabelas ao iniciar. IDs de serviços inexistentes ou inativos são
+recusados na criação. O CRUD de serviços ainda será implementado; até lá,
+reservas podem ser feitas sem serviços ou com serviços cadastrados no banco.
+Não há cobrança ou cálculo de valores de serviços nesta etapa.
+
+Exclusão física, rejeição, alteração de datas e troca de serviços de uma reserva
+não possuem endpoints nesta etapa; dependem das decisões de escopo sobre
+histórico e alterações. Não existe remoção em cascata de clientes, quartos ou
+serviços ao cancelar uma reserva.
+
+### Validação manual de reservas
+
+Prepare uma sessão de cliente e outra de recepcionista seguindo a seção de
+autenticação; use arquivos de cookies separados e um token CSRF para cada sessão.
+Com um quarto ativo e datas futuras:
+
+1. Consulte a disponibilidade: deve retornar `available: true`.
+2. Como cliente, envie POST com o JSON acima e anote o ID: deve retornar `201`
+   e status `PENDING`. O cliente da resposta deve corresponder à sessão.
+3. Consulte novamente a disponibilidade: `available: false`. Solicitar uma
+   reserva sobreposta deve retornar `409`, mesmo antes da aprovação.
+4. Como recepcionista, aprove a reserva: `200` e `APPROVED`. Repetir deve dar `409`.
+5. Como outro cliente, confirme que a listagem não inclui a reserva e que
+   consultar ou cancelar seu ID retorna `404`. Aprovação por cliente dá `403`.
+6. Como proprietário, cancele até o dia anterior à entrada: `200`, `CANCELLED`.
+   Confirme a disponibilidade liberada e solicite outra reserva no mesmo período.
+7. Faça uma reserva com entrada amanhã: deve permitir cancelamento hoje.
+   Faça outra com entrada hoje: o cancelamento deve retornar `409`.
+8. Verifique saída igual ou anterior à entrada, entrada passada, capacidade
+   excedida, quantidade zero, datas ausentes e IDs inválidos (`400`).
+9. Verifique quarto inativo (`409`), IDs inexistentes (`404`), serviços inativos
+   (`409`) e serviços inexistentes (`404`).
+10. Verifique uma entrada no mesmo dia da saída de outra reserva: deve ser aceita.
+11. Dispare duas solicitações para um quarto livre e o mesmo período em duas
+    janelas: somente uma deve retornar `201`; a outra deve retornar `409`.
+12. Confirme que excluir um quarto com reserva dá `409`, mesmo após cancelamento,
+    e que reduzir sua capacidade abaixo de uma reserva bloqueante dá `409`.
+13. Reinicie a aplicação, autentique novamente e confira a preservação das
+    reservas, dos status e das associações de serviços.
+
+O fluxo é validado manualmente contra PostgreSQL, sem infraestrutura de testes
+automatizados ou banco em memória.

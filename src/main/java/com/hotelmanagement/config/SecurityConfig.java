@@ -38,6 +38,11 @@ public class SecurityConfig {
                                 "/api/room-types", "/api/room-types/**").permitAll()
                         .requestMatchers("/api/rooms", "/api/rooms/**",
                                 "/api/room-types", "/api/room-types/**").hasRole("RECEPTIONIST")
+                        .requestMatchers(HttpMethod.POST, "/api/reservations").hasRole("CLIENT")
+                        .requestMatchers(HttpMethod.PUT, "/api/reservations/*/approve").hasRole("RECEPTIONIST")
+                        .requestMatchers(HttpMethod.PUT, "/api/reservations/*/cancel").hasRole("CLIENT")
+                        .requestMatchers("/api/reservations", "/api/reservations/**")
+                                .hasAnyRole("CLIENT", "RECEPTIONIST")
                         .anyRequest().authenticated())
                 .exceptionHandling(exceptions -> exceptions
                         .authenticationEntryPoint(errors)
