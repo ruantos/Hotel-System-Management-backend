@@ -34,6 +34,11 @@ public class GlobalExceptionHandler extends ResponseEntityExceptionHandler {
                 "A operação viola uma restrição de integridade dos dados.");
     }
 
+    @ExceptionHandler(ResourceConflictException.class)
+    public ProblemDetail handleConflict(ResourceConflictException exception) {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.CONFLICT, exception.getMessage());
+    }
+
     @Override
     protected ResponseEntity<Object> handleMethodArgumentNotValid(
             MethodArgumentNotValidException exception, HttpHeaders headers,

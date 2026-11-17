@@ -127,7 +127,7 @@ ou renomeado será cadastrado novamente no próximo início.
 🚧 **Em desenvolvimento**
 
 Estão implementadas a modelagem de quartos e tipos, a inicialização dos tipos
-e a API de CRUD de tipos de quarto. As demais funcionalidades serão
+e as APIs de CRUD de quartos e tipos de quarto. As demais funcionalidades serão
 implementadas de forma incremental.
 
 ## API de tipos de quarto
@@ -197,3 +197,92 @@ Confirme `200`, `200`, `204` e `404`, respectivamente. Verifique também:
   e preservar o tipo e seus quartos.
 - Reiniciar a aplicação deve preservar os tipos cadastrados e suas alterações,
   observando a reposição dos tipos iniciais descrita na seção do banco.
+
+## API de quartos
+
+| Método | Rota | Resultado de sucesso |
+| --- | --- | --- |
+| GET | `/api/rooms` | `200`: lista de quartos, incluindo inativos, ordenada por número |
+| GET | `/api/rooms/{id}` | `200`: quarto encontrado |
+| POST | `/api/rooms` | `201`: quarto criado e cabeçalho `Location` |
+| PUT | `/api/rooms/{id}` | `200`: quarto atualizado |
+| DELETE | `/api/rooms/{id}` | `204`: exclusão sem corpo de resposta |
+
+POST e PUT recebem os seguintes campos:
+
+| Campo | Regra |
+| --- | --- |
+| `name` | Opcional, até 255 caracteres |
+| `number` | Inteiro positivo obrigatório e único |
+| `typeId` | ID positivo obrigatório de um tipo existente |
+| `description` | Opcional, até 255 caracteres |
+| `capacity` | Inteiro positivo obrigatório |
+| `pricePerNight` | Obrigatório, de zero a 99999999.99, até duas casas decimais |
+| `active` | Booleano obrigatório: `true` ou `false` |
+
+PUT substitui os dados editáveis: os campos obrigatórios devem ser enviados
+novamente; omitir `name` ou `description` remove seu valor anterior. `id` e
+`createdAt` são gerados pelo servidor e preservados na atualização.
+
+A resposta contém `id`, `name`, `number`, `type`, `description`, `capacity`,
+`pricePerNight`, `active` e `createdAt`. `type` contém `id`, `name` e
+`description` do tipo associado. As entidades JPA não são expostas diretamente.
+
+Dados inválidos retornam `400`; quarto ou tipo inexistente retorna `404`;
+número de quarto já utilizado retorna `409`. Na atualização, manter o número
+do próprio quarto é permitido. A restrição única no banco também protege
+contra gravações simultâneas com o mesmo número.
+
+Desativar um quarto é uma atualização com `active: false`; DELETE exclui
+fisicamente o registro. A integração com reservas e suas restrições de exclusão
+será implementada na etapa de reservas. Autenticação e restrição de escrita
+ao perfil de recepcionista também permanecem pendentes.
+
+### Validação manual dos quartos
+
+1. Execute a aplicação com PostgreSQL e consulte `GET /api/room-types`.
+2. Use um ID existente no campo `typeId` dos exemplos abaixo, substituindo `1`.
+3. Cadastre um quarto com um número ainda livre e anote seu ID:
+
+```bash
+curl -i -X POST http://localhost:8080/api/rooms \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"Quarto 101","number":101,"typeId":1,"description":"Vista para o jardim.","capacity":2,"pricePerNight":180.50,"active":true}'
+
+curl -i http://localhost:8080/api/rooms
+```
+
+Confirme `201` na criação, `Location` apontando para o quarto criado e `200`
+na listagem. Substitua `<id>` pelo ID retornado:
+
+```bash
+curl -i 'http://localhost:8080/api/rooms/<id>'
+
+curl -i -X PUT 'http://localhost:8080/api/rooms/<id>' \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"Quarto 101 atualizado","number":101,"typeId":1,"description":"Descrição atualizada.","capacity":3,"pricePerNight":200.00,"active":false}'
+```
+
+Confirme `200` nos dois casos, preservação de `id` e `createdAt` e atualização
+dos demais campos. Antes de excluir, valide também:
+
+- Repetir o POST com número `101` deve retornar `409`.
+- Cadastrar outro quarto e atualizar seu número para `101` deve retornar `409`.
+- Usar um `typeId` positivo inexistente deve retornar `404`.
+- Número ou capacidade zero ou negativos, diária negativa, com mais de duas
+  casas decimais ou acima do limite devem retornar `400`.
+- Campos obrigatórios ausentes ou nulos e textos acima de 255 caracteres
+  devem retornar `400`. `active: false` e diária zero são válidos.
+- Excluir o tipo vinculado ao quarto deve retornar `409`, mesmo com o quarto inativo.
+- Reiniciar a aplicação deve preservar o quarto e suas alterações.
+
+Finalize excluindo o quarto:
+
+```bash
+curl -i -X DELETE 'http://localhost:8080/api/rooms/<id>'
+curl -i 'http://localhost:8080/api/rooms/<id>'
+```
+
+Confirme `204` na exclusão e `404` na consulta. PUT e DELETE com ID
+inexistente também devem retornar `404`; ID não numérico e JSON malformado
+devem retornar `400`.

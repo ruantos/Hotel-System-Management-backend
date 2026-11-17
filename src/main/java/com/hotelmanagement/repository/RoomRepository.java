@@ -6,4 +6,8 @@ import org.springframework.data.jpa.repository.JpaRepository;
 public interface RoomRepository extends JpaRepository<Room, Long> {
 
     boolean existsByType_Id(Long typeId);
+
+    boolean existsByNumber(int number);
+
+    boolean existsByNumberAndIdNot(int number, Long id);
 }
