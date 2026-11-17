@@ -30,6 +30,46 @@ No Windows, utilize `mvnw.cmd`. A aplicação fica em `http://localhost:8080`.
 Hibernate. Os tipos `Normal` e `Suíte` são inseridos quando não existem.
 Os dados permanecem no PostgreSQL após reiniciar; as sessões exigem novo login.
 
+## Docker e deploy no Render
+
+O `Dockerfile` compila com o Maven Wrapper e Java 21 em uma etapa e copia somente
+o JAR executável para a imagem final com Java 21 JRE. O processo executa com
+usuário sem privilégios de root. O `.dockerignore` exclui credenciais, metadados
+do Git, caches e arquivos locais do contexto de construção.
+
+Para executar localmente com Docker instalado:
+
+```bash
+docker build -t hotel-management .
+docker run --rm -p 8080:8080 --env-file .env hotel-management
+```
+
+O `.env` é fornecido ao container em execução e não fica dentro da imagem.
+A porta segue `PORT`, com padrão `8080`; `SERVER_PORT` também pode ser usado
+como configuração direta do Spring Boot.
+
+No Render, crie um Web Service, conecte este repositório, escolha Docker e
+selecione o plano Free. Mantenha o caminho do Dockerfile como `./Dockerfile`
+e o comando Docker padrão. Não é necessário instalar Docker localmente para
+o Render construir a imagem.
+
+Configure em Environment:
+
+| Variável | Valor |
+| --- | --- |
+| `DB_URL` | Sua connection string JDBC do Neon, com SSL |
+| `SESSION_COOKIE_SECURE` | `true` |
+| `SERVER_FORWARD_HEADERS_STRATEGY` | `framework` |
+| `BOOTSTRAP_RECEPTIONIST_ENABLED` | `false`, quando a conta já existe no mesmo banco |
+
+O Render fornece `PORT` automaticamente. Para a checagem de saúde, use
+`/api/room-types`, que é uma consulta pública. Após o deploy, acesse
+`https://SEU-SERVICO.onrender.com/swagger-ui.html`.
+
+No plano gratuito, a aplicação pode ser suspensa por inatividade. O próximo
+acesso pode levar mais tempo e exigir novo login, pois sessões ficam em memória.
+Os dados permanecem no Neon.
+
 ## Primeiro recepcionista
 
 Para o primeiro acesso administrativo, configure no `.env`:
