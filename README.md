@@ -128,7 +128,7 @@ ou renomeado será cadastrado novamente no próximo início.
 
 Estão implementadas a modelagem de quartos e tipos, a inicialização dos tipos
 e as APIs de CRUD de quartos e tipos de quarto. A modelagem de usuários e
-perfis de cliente também está implementada. As demais funcionalidades serão
+perfis de cliente e o cadastro público de clientes também estão implementados. As demais funcionalidades serão
 implementadas de forma incremental.
 
 ## Modelagem de usuários e clientes
@@ -145,19 +145,82 @@ obrigatória e única. Um perfil sempre referencia um usuário; um usuário pode
 existir sem perfil, permitindo representar recepcionistas. O vínculo é
 unidirecional, com carregamento `LAZY` e sem exclusão em cascata.
 
-Telefone e documento são opcionais nesta modelagem. O serviço de cadastro
-deverá garantir que usuários clientes tenham um perfil e que recepcionistas
-não recebam esse perfil. A normalização do e-mail, o cálculo do hash da senha,
-a ativação da conta e as validações de cadastro serão implementados nessa etapa.
-O campo `passwordHash` apenas armazena o resultado do hash; não o calcula.
-Nenhuma conta inicial ou endpoint de usuários foi criado nesta etapa.
+Telefone e documento são opcionais nesta modelagem. O cadastro público cria
+um usuário ativo com perfil `CLIENT` e seu `CustomerProfile` na mesma transação.
+O e-mail é normalizado e a senha é transformada em hash pelo serviço de cadastro.
+Nenhuma conta inicial é criada. O cadastro de recepcionistas permanece pendente.
 
 Quando o PostgreSQL estiver disponível, iniciar a aplicação com `ddl-auto=update`
 deverá criar as tabelas `users` e `customer_profile`. A validação manual do
 esquema deverá confirmar a unicidade de `users.email` e de
 `customer_profile.user_id`, a obrigatoriedade do vínculo e a chave estrangeira
-para `users.id`. A persistência e os fluxos de cadastro serão validados quando
-seus serviços e endpoints estiverem implementados.
+para `users.id`. A validação manual do fluxo de cadastro está descrita abaixo.
+
+## Cadastro de clientes
+
+`POST /api/auth/register` cria uma conta de cliente e retorna `201`.
+
+| Campo | Regra |
+| --- | --- |
+| `name` | Obrigatório, não vazio, até 255 caracteres |
+| `email` | Obrigatório, formato de e-mail, até 255 caracteres após remover espaços das extremidades |
+| `password` | Obrigatória, não composta apenas por espaços, de 8 a 128 caracteres |
+| `phone` | Opcional, até 255 caracteres |
+| `document` | Opcional, até 255 caracteres |
+
+O nome é salvo sem espaços nas extremidades. O e-mail é salvo em minúsculas e
+sem espaços nas extremidades; a verificação de duplicidade ignora maiúsculas.
+A senha é preservada exatamente como recebida antes do cálculo do hash.
+O serviço atribui `role: CLIENT` e `active: true`; esses valores não podem
+ser escolhidos pela requisição.
+
+A resposta contém `id`, `name`, `email`, `role`, `active` e `customerProfile`
+com `id`, `phone` e `document`. Senha e hash não fazem parte do DTO de resposta.
+Dados inválidos retornam `400`; e-mail já cadastrado retorna `409`. A restrição
+única do banco também impede cadastros simultâneos com o mesmo e-mail normalizado.
+Uma falha ao salvar o perfil desfaz a criação do usuário pela transação.
+
+`PasswordConfig` fornece um `PasswordEncoder` PBKDF2-HMAC-SHA256 com salt
+aleatório de 16 bytes e 600.000 iterações. A dependência `spring-security-crypto`
+fornece o hash sem ativar autenticação HTTP. O futuro login deverá utilizar o
+mesmo encoder e seu método `matches`; alterar os parâmetros exige considerar
+os hashes já persistidos. Cadastro não inicia sessão nem emite token.
+
+### Validação manual do cadastro
+
+Com PostgreSQL configurado e a aplicação iniciada, execute com um e-mail novo:
+
+```bash
+curl -i -X POST http://localhost:8080/api/auth/register \
+  -H 'Content-Type: application/json' \
+  -d '{"name":"Ana Silva","email":" Ana@Example.com ","password":"SenhaExemplo123!","phone":"81999999999","document":"Documento de exemplo"}'
+```
+
+Confirme `201`, `email: ana@example.com`, `role: CLIENT`, `active: true`
+e um perfil de cliente com ID. A resposta não deve conter `password` nem
+`passwordHash`. No cliente PostgreSQL, confirme o vínculo:
+
+```sql
+SELECT u.id, u.email, u.role, u.active, c.id AS profile_id, c.user_id,
+       u.password_hash <> 'SenhaExemplo123!' AS password_is_not_plaintext
+FROM users u
+JOIN customer_profile c ON c.user_id = u.id
+WHERE u.email = 'ana@example.com';
+```
+
+Verifique também:
+
+- Repetir o cadastro com `ANA@EXAMPLE.COM` deve retornar `409`, sem novos registros.
+- Campos obrigatórios ausentes ou vazios, e-mail inválido, senha com menos de
+  8 ou mais de 128 caracteres e textos acima dos limites devem retornar `400`.
+- Omitir telefone e documento deve permitir o cadastro de outro e-mail,
+  mantendo esses campos nulos no perfil.
+- Acrescentar `role: RECEPTIONIST` ou `active: false` à requisição não deve
+  alterar os valores atribuídos pelo serviço: `CLIENT` e `true`.
+- Reiniciar a aplicação deve preservar o usuário, o perfil e o hash.
+
+Login, autorização e cadastro de recepcionistas serão implementados nas
+próximas etapas.
 
 ## API de tipos de quarto
 
