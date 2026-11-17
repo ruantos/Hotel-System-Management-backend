@@ -3,14 +3,12 @@ package com.hotelmanagement.service;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 
 import com.hotelmanagement.dto.CreateReservationRequest;
 import com.hotelmanagement.dto.ReservationResponse;
 import com.hotelmanagement.dto.RoomAvailabilityResponse;
-import com.hotelmanagement.entity.AdditionalService;
 import com.hotelmanagement.entity.CustomerProfile;
 import com.hotelmanagement.entity.Reservation;
 import com.hotelmanagement.entity.Room;
@@ -20,7 +18,6 @@ import com.hotelmanagement.enums.UserRole;
 import com.hotelmanagement.exception.InvalidRequestException;
 import com.hotelmanagement.exception.ResourceConflictException;
 import com.hotelmanagement.exception.ResourceNotFoundException;
-import com.hotelmanagement.repository.AdditionalServiceRepository;
 import com.hotelmanagement.repository.CustomerProfileRepository;
 import com.hotelmanagement.repository.ReservationRepository;
 import com.hotelmanagement.repository.RoomRepository;
@@ -41,17 +38,14 @@ public class ReservationService {
     private final RoomRepository roomRepository;
     private final UserRepository userRepository;
     private final CustomerProfileRepository customerProfileRepository;
-    private final AdditionalServiceRepository additionalServiceRepository;
     private final Clock clock;
 
     public ReservationService(ReservationRepository reservationRepository, RoomRepository roomRepository,
-            UserRepository userRepository, CustomerProfileRepository customerProfileRepository,
-            AdditionalServiceRepository additionalServiceRepository, Clock clock) {
+            UserRepository userRepository, CustomerProfileRepository customerProfileRepository, Clock clock) {
         this.reservationRepository = reservationRepository;
         this.roomRepository = roomRepository;
         this.userRepository = userRepository;
         this.customerProfileRepository = customerProfileRepository;
-        this.additionalServiceRepository = additionalServiceRepository;
         this.clock = clock;
     }
 
@@ -74,7 +68,6 @@ public class ReservationService {
         reservation.setGuestCount(request.guestCount());
         reservation.setStatus(ReservationStatus.PENDING);
         reservation.setCreatedAt(LocalDateTime.now(clock));
-        reservation.setAdditionalServices(getActiveServices(request.additionalServiceIds()));
         return toResponse(reservationRepository.saveAndFlush(reservation));
     }
 
@@ -198,22 +191,9 @@ public class ReservationService {
         }
     }
 
-    private Set<AdditionalService> getActiveServices(Set<Long> ids) {
-        List<AdditionalService> services = additionalServiceRepository.findAllById(ids);
-        if (services.size() != ids.size()) {
-            throw new ResourceNotFoundException("Um ou mais serviços adicionais não foram encontrados.");
-        }
-        if (services.stream().anyMatch(service -> !service.isActive())) {
-            throw new ResourceConflictException("Serviços inativos não podem ser adicionados à reserva.");
-        }
-        return new HashSet<>(services);
-    }
-
     private ReservationResponse toResponse(Reservation reservation) {
-        List<Long> serviceIds = reservation.getAdditionalServices().stream()
-                .map(AdditionalService::getId).sorted().toList();
         return new ReservationResponse(reservation.getId(), reservation.getCustomer().getId(),
                 reservation.getRoom().getId(), reservation.getCheckInDate(), reservation.getCheckOutDate(),
-                reservation.getGuestCount(), reservation.getStatus(), reservation.getCreatedAt(), serviceIds);
+                reservation.getGuestCount(), reservation.getStatus(), reservation.getCreatedAt());
     }
 }

@@ -521,17 +521,15 @@ recebem corpo. A criação recebe:
   "roomId": 1,
   "checkInDate": "2027-01-10",
   "checkOutDate": "2027-01-12",
-  "guestCount": 2,
-  "additionalServiceIds": []
+  "guestCount": 2
 }
 ```
 
 Use um quarto real e datas futuras ao validar. `roomId`, datas e `guestCount`
 são obrigatórios. IDs e quantidade de hóspedes devem ser positivos.
-`additionalServiceIds` é opcional; ausente, nulo ou vazio significa sem serviços.
 O cliente é obtido da sessão, e o status é definido pelo servidor. A resposta
 contém `id`, `customerProfileId`, `roomId`, `checkInDate`, `checkOutDate`,
-`guestCount`, `status`, `createdAt` e `additionalServiceIds`.
+`guestCount`, `status` e `createdAt`.
 
 ### Regras implementadas
 
@@ -557,22 +555,17 @@ A aprovação e o cancelamento também bloqueiam a reserva para proteger as
 transições de status. Alterar ou excluir quartos usa o mesmo bloqueio de quarto.
 
 Datas inválidas e capacidade excedida retornam `400`; entidades inexistentes
-retornam `404`; indisponibilidade, quarto inativo, serviço inativo e transições
+retornam `404`; indisponibilidade, quarto inativo e transições
 inválidas retornam `409`. Perfil sem permissão retorna `403` e ausência de
 autenticação retorna `401`, observada a exigência de CSRF nas escritas.
 
 `Reservation` referencia `CustomerProfile` e `Room` por `@ManyToOne`.
-`AdditionalService` representa os serviços opcionais e se associa a reservas
-por `@ManyToMany`, com a tabela `reservation_additional_service`. O Hibernate
-prepara as tabelas ao iniciar. IDs de serviços inexistentes ou inativos são
-recusados na criação. O CRUD de serviços ainda será implementado; até lá,
-reservas podem ser feitas sem serviços ou com serviços cadastrados no banco.
-Não há cobrança ou cálculo de valores de serviços nesta etapa.
+O Hibernate prepara as tabelas ao iniciar.
 
-Exclusão física, rejeição, alteração de datas e troca de serviços de uma reserva
+Exclusão física, rejeição e alteração de datas de uma reserva
 não possuem endpoints nesta etapa; dependem das decisões de escopo sobre
-histórico e alterações. Não existe remoção em cascata de clientes, quartos ou
-serviços ao cancelar uma reserva.
+histórico e alterações. Não existe remoção em cascata de clientes ou quartos
+ao cancelar uma reserva.
 
 ### Validação manual de reservas
 
@@ -594,15 +587,14 @@ Com um quarto ativo e datas futuras:
    Faça outra com entrada hoje: o cancelamento deve retornar `409`.
 8. Verifique saída igual ou anterior à entrada, entrada passada, capacidade
    excedida, quantidade zero, datas ausentes e IDs inválidos (`400`).
-9. Verifique quarto inativo (`409`), IDs inexistentes (`404`), serviços inativos
-   (`409`) e serviços inexistentes (`404`).
+9. Verifique quarto inativo (`409`) e IDs inexistentes (`404`).
 10. Verifique uma entrada no mesmo dia da saída de outra reserva: deve ser aceita.
 11. Dispare duas solicitações para um quarto livre e o mesmo período em duas
     janelas: somente uma deve retornar `201`; a outra deve retornar `409`.
 12. Confirme que excluir um quarto com reserva dá `409`, mesmo após cancelamento,
     e que reduzir sua capacidade abaixo de uma reserva bloqueante dá `409`.
 13. Reinicie a aplicação, autentique novamente e confira a preservação das
-    reservas, dos status e das associações de serviços.
+    reservas e dos status.
 
 O fluxo é validado manualmente contra PostgreSQL, sem infraestrutura de testes
 automatizados ou banco em memória.

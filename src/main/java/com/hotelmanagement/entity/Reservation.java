@@ -2,8 +2,6 @@ package com.hotelmanagement.entity;
 
 import java.time.LocalDate;
 import java.time.LocalDateTime;
-import java.util.HashSet;
-import java.util.Set;
 
 import com.hotelmanagement.enums.ReservationStatus;
 import jakarta.persistence.Column;
@@ -15,8 +13,6 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
-import jakarta.persistence.JoinTable;
-import jakarta.persistence.ManyToMany;
 import jakarta.persistence.ManyToOne;
 
 @Entity
@@ -49,12 +45,6 @@ public class Reservation {
 
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
-
-    @ManyToMany
-    @JoinTable(name = "reservation_additional_service",
-            joinColumns = @JoinColumn(name = "reservation_id"),
-            inverseJoinColumns = @JoinColumn(name = "additional_service_id"))
-    private Set<AdditionalService> additionalServices = new HashSet<>();
 
     public Reservation() {
     }
@@ -119,11 +109,4 @@ public class Reservation {
         this.createdAt = createdAt;
     }
 
-    public Set<AdditionalService> getAdditionalServices() {
-        return additionalServices;
-    }
-
-    public void setAdditionalServices(Set<AdditionalService> additionalServices) {
-        this.additionalServices = additionalServices;
-    }
 }
