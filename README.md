@@ -128,7 +128,8 @@ ou renomeado será cadastrado novamente no próximo início.
 
 Estão implementadas a modelagem de quartos e tipos, a inicialização dos tipos
 e as APIs de CRUD de quartos e tipos de quarto. A modelagem de usuários e
-perfis de cliente e o cadastro público de clientes também estão implementados. As demais funcionalidades serão
+perfis de cliente, o cadastro público de clientes, o login por sessão e o controle
+de acesso a quartos e tipos também estão implementados. As demais funcionalidades serão
 implementadas de forma incremental.
 
 ## Modelagem de usuários e clientes
@@ -181,17 +182,17 @@ Dados inválidos retornam `400`; e-mail já cadastrado retorna `409`. A restriç
 Uma falha ao salvar o perfil desfaz a criação do usuário pela transação.
 
 `PasswordConfig` fornece um `PasswordEncoder` PBKDF2-HMAC-SHA256 com salt
-aleatório de 16 bytes e 600.000 iterações. A dependência `spring-security-crypto`
-fornece o hash sem ativar autenticação HTTP. O futuro login deverá utilizar o
-mesmo encoder e seu método `matches`; alterar os parâmetros exige considerar
+aleatório de 16 bytes e 600.000 iterações. O Spring Security utiliza o mesmo
+encoder para verificar a senha no login; alterar os parâmetros exige considerar
 os hashes já persistidos. Cadastro não inicia sessão nem emite token.
 
 ### Validação manual do cadastro
 
-Com PostgreSQL configurado e a aplicação iniciada, execute com um e-mail novo:
+Com PostgreSQL configurado e a aplicação iniciada, obtenha o cookie e o token
+CSRF conforme a seção de autenticação abaixo. Execute com um e-mail novo:
 
 ```bash
-curl -i -X POST http://localhost:8080/api/auth/register \
+curl -i -X POST -b /tmp/hotel-cookies.txt -H "X-CSRF-TOKEN: $CSRF_TOKEN" http://localhost:8080/api/auth/register \
   -H 'Content-Type: application/json' \
   -d '{"name":"Ana Silva","email":" Ana@Example.com ","password":"SenhaExemplo123!","phone":"81999999999","document":"Documento de exemplo"}'
 ```
@@ -219,8 +220,116 @@ Verifique também:
   alterar os valores atribuídos pelo serviço: `CLIENT` e `true`.
 - Reiniciar a aplicação deve preservar o usuário, o perfil e o hash.
 
-Login, autorização e cadastro de recepcionistas serão implementados nas
-próximas etapas.
+O cadastro de recepcionistas permanece pendente.
+
+## Autenticação e controle de acesso
+
+A autenticação utiliza sessão HTTP mantida no servidor e o cookie `JSESSIONID`.
+Não há emissão de JWT. O cookie é HttpOnly, com SameSite=Lax, e a sessão expira
+após 30 minutos de inatividade. As sessões ficam em memória; reiniciar a aplicação
+exige novo login. Em um ambiente HTTPS, configure `SESSION_COOKIE_SECURE=true`.
+
+| Método | Rota | Resultado |
+| --- | --- | --- |
+| GET | `/api/auth/csrf` | `200`: `headerName` e `token` para proteção CSRF |
+| POST | `/api/auth/register` | `201`: cadastro público de cliente com corpo JSON |
+| POST | `/api/auth/login` | `204`: login com formulário `email` e `password` |
+| GET | `/api/auth/me` | `200`: dados do usuário autenticado, sem senha ou hash |
+| POST | `/api/auth/logout` | `204`: invalida a sessão e remove o cookie |
+
+O login recebe `application/x-www-form-urlencoded`, processado pelo filtro
+do Spring Security. Cadastro e CRUD continuam recebendo JSON. E-mails no login
+são comparados sem distinguir maiúsculas e sem espaços nas extremidades.
+Senha incorreta, conta inexistente ou inativa retornam a mesma resposta `401`.
+O login altera o identificador da sessão para proteger contra fixação de sessão.
+
+Consultas GET de quartos e tipos são públicas. POST, PUT e DELETE dessas
+entidades exigem `RECEPTIONIST`. Com token CSRF válido, um visitante recebe
+`401` ao tentar escrever e um cliente autenticado recebe `403`. Falta ou erro
+no token CSRF retorna `403`, inclusive em cadastro e login. Os erros de segurança
+usam Problem Details e não redirecionam para páginas HTML de login.
+
+As permissões e o estado ativo são carregados no login. Alterações posteriores
+no banco exigem encerrar a sessão e autenticar novamente para atualizar as
+autoridades; revogação imediata de sessões ainda não está implementada.
+
+### Cookies, CSRF e Frontend
+
+Antes de enviar POST, PUT ou DELETE, consulte `/api/auth/csrf`, guarde o
+cookie e envie o token no cabeçalho indicado por `headerName` (`X-CSRF-TOKEN`).
+Após login ou logout, obtenha um novo token, pois o anterior é invalidado.
+
+No navegador, use `credentials: 'include'` nas requisições. CORS permite por
+padrão `http://localhost:5173` e `http://localhost:3000`. Configure
+`CORS_ALLOWED_ORIGINS` com origens explícitas separadas por vírgula para mudar
+esses endereços. A configuração SameSite=Lax atende ao desenvolvimento em
+localhost com portas distintas; publicação em sites distintos exigirá rever
+a política de cookie e utilizar HTTPS.
+
+### Validação manual de autenticação
+
+Obtenha o cookie e o token:
+
+```bash
+curl -i -c /tmp/hotel-cookies.txt http://localhost:8080/api/auth/csrf
+```
+
+Copie o valor `token` retornado para a variável abaixo:
+
+```bash
+CSRF_TOKEN='cole-o-token-aqui'
+```
+
+Use esse cookie e token no cadastro apresentado anteriormente. Depois faça
+login com a conta cadastrada:
+
+```bash
+curl -i -b /tmp/hotel-cookies.txt -c /tmp/hotel-cookies.txt \
+  -H "X-CSRF-TOKEN: $CSRF_TOKEN" \
+  --data-urlencode 'email=ana@example.com' \
+  --data-urlencode 'password=SenhaExemplo123!' \
+  http://localhost:8080/api/auth/login
+
+curl -i -b /tmp/hotel-cookies.txt http://localhost:8080/api/auth/me
+
+curl -i -b /tmp/hotel-cookies.txt -c /tmp/hotel-cookies.txt \
+  http://localhost:8080/api/auth/csrf
+```
+
+Confirme `204` no login e `200` em `/me`, com o usuário esperado e sem senha
+ou hash. Atualize `CSRF_TOKEN` com o token da última resposta. Os exemplos
+de escrita dos CRUDs abaixo usam esse cookie e essa variável; para sucesso
+no CRUD, a sessão deverá pertencer a um recepcionista.
+
+Não há provisionamento automático de recepcionistas. Para validar esse perfil
+em desenvolvimento, um responsável pelo banco pode cadastrar uma conta de teste
+pela API e, com a sessão encerrada, ajustar exclusivamente essa conta:
+
+```sql
+BEGIN;
+DELETE FROM customer_profile
+WHERE user_id IN (SELECT id FROM users WHERE email = 'recepcao@example.com');
+UPDATE users SET role = 'RECEPTIONIST'
+WHERE email = 'recepcao@example.com';
+COMMIT;
+```
+
+Faça novo login com essa conta para executar os CRUDs. Esse procedimento manual
+serve à validação; o mecanismo definitivo de cadastro de recepcionistas permanece
+pendente. O cadastro público sempre atribui `CLIENT`.
+
+Valide também `/me` sem cookie (`401`), login com senha errada ou conta inativa
+(`401`), escrita com cliente e CSRF válido (`403`), escrita sem CSRF (`403`) e
+consultas públicas sem cookie (`200`). Para sair:
+
+```bash
+curl -i -X POST -b /tmp/hotel-cookies.txt -c /tmp/hotel-cookies.txt \
+  -H "X-CSRF-TOKEN: $CSRF_TOKEN" http://localhost:8080/api/auth/logout
+curl -i -b /tmp/hotel-cookies.txt http://localhost:8080/api/auth/me
+```
+
+Confirme `204` no logout e `401` em `/me`. Para reiniciar o fluxo, obtenha
+novamente cookie e token CSRF.
 
 ## API de tipos de quarto
 
@@ -244,9 +353,8 @@ Os erros usam o formato Problem Details; erros de validação incluem
 o campo `errors`, com mensagens por campo. Falhas de integridade retornam
 `409` sem expor detalhes internos do banco.
 
-Nesta etapa os endpoints ainda não possuem autenticação. A restrição de
-escrita ao perfil de recepcionista será implementada na etapa de segurança.
-Swagger também permanece pendente.
+Escrita exige uma sessão de recepcionista e token CSRF, conforme a seção de
+autenticação. Consultas são públicas. Swagger permanece pendente.
 
 ### Validação manual do CRUD
 
@@ -259,7 +367,7 @@ curl -i http://localhost:8080/api/room-types
 Cadastre um tipo e anote o `id` retornado:
 
 ```bash
-curl -i -X POST http://localhost:8080/api/room-types \
+curl -i -X POST -b /tmp/hotel-cookies.txt -H "X-CSRF-TOKEN: $CSRF_TOKEN" http://localhost:8080/api/room-types \
   -H 'Content-Type: application/json' \
   -d '{"name":"Premium","description":"Acomodação premium."}'
 ```
@@ -269,11 +377,11 @@ Nos comandos seguintes, substitua `<id>` pelo ID cadastrado:
 ```bash
 curl -i 'http://localhost:8080/api/room-types/<id>'
 
-curl -i -X PUT 'http://localhost:8080/api/room-types/<id>' \
+curl -i -X PUT -b /tmp/hotel-cookies.txt -H "X-CSRF-TOKEN: $CSRF_TOKEN" 'http://localhost:8080/api/room-types/<id>' \
   -H 'Content-Type: application/json' \
   -d '{"name":"Premium atualizado","description":"Descrição atualizada."}'
 
-curl -i -X DELETE 'http://localhost:8080/api/room-types/<id>'
+curl -i -X DELETE -b /tmp/hotel-cookies.txt -H "X-CSRF-TOKEN: $CSRF_TOKEN" 'http://localhost:8080/api/room-types/<id>'
 
 curl -i 'http://localhost:8080/api/room-types/<id>'
 ```
@@ -327,8 +435,8 @@ contra gravações simultâneas com o mesmo número.
 
 Desativar um quarto é uma atualização com `active: false`; DELETE exclui
 fisicamente o registro. A integração com reservas e suas restrições de exclusão
-será implementada na etapa de reservas. Autenticação e restrição de escrita
-ao perfil de recepcionista também permanecem pendentes.
+será implementada na etapa de reservas. Escrita exige sessão de recepcionista
+e token CSRF; consultas são públicas.
 
 ### Validação manual dos quartos
 
@@ -337,7 +445,7 @@ ao perfil de recepcionista também permanecem pendentes.
 3. Cadastre um quarto com um número ainda livre e anote seu ID:
 
 ```bash
-curl -i -X POST http://localhost:8080/api/rooms \
+curl -i -X POST -b /tmp/hotel-cookies.txt -H "X-CSRF-TOKEN: $CSRF_TOKEN" http://localhost:8080/api/rooms \
   -H 'Content-Type: application/json' \
   -d '{"name":"Quarto 101","number":101,"typeId":1,"description":"Vista para o jardim.","capacity":2,"pricePerNight":180.50,"active":true}'
 
@@ -350,7 +458,7 @@ na listagem. Substitua `<id>` pelo ID retornado:
 ```bash
 curl -i 'http://localhost:8080/api/rooms/<id>'
 
-curl -i -X PUT 'http://localhost:8080/api/rooms/<id>' \
+curl -i -X PUT -b /tmp/hotel-cookies.txt -H "X-CSRF-TOKEN: $CSRF_TOKEN" 'http://localhost:8080/api/rooms/<id>' \
   -H 'Content-Type: application/json' \
   -d '{"name":"Quarto 101 atualizado","number":101,"typeId":1,"description":"Descrição atualizada.","capacity":3,"pricePerNight":200.00,"active":false}'
 ```
@@ -371,7 +479,7 @@ dos demais campos. Antes de excluir, valide também:
 Finalize excluindo o quarto:
 
 ```bash
-curl -i -X DELETE 'http://localhost:8080/api/rooms/<id>'
+curl -i -X DELETE -b /tmp/hotel-cookies.txt -H "X-CSRF-TOKEN: $CSRF_TOKEN" 'http://localhost:8080/api/rooms/<id>'
 curl -i 'http://localhost:8080/api/rooms/<id>'
 ```
 
