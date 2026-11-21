@@ -17,6 +17,8 @@ import com.hotelmanagement.exception.InvalidRequestException;
 import com.hotelmanagement.exception.ServiceUnavailableException;
 import com.hotelmanagement.repository.UserRepository;
 import com.hotelmanagement.security.PasswordResetRateLimiter;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.mail.SimpleMailMessage;
 import org.springframework.mail.javamail.JavaMailSender;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -26,6 +28,8 @@ import org.springframework.web.util.UriComponentsBuilder;
 
 @Service
 public class PasswordResetService {
+
+    private static final Logger logger = LoggerFactory.getLogger(PasswordResetService.class);
 
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
@@ -57,11 +61,13 @@ public class PasswordResetService {
         User user = userRepository.findLockedByEmail(email.strip().toLowerCase(Locale.ROOT))
                 .filter(User::isActive).orElse(null);
         if (user == null) {
+            logger.info("Recuperação de senha: envio ignorado; conta inexistente ou inativa.");
             return;
         }
         Instant now = clock.instant();
         if (user.getPasswordResetRequestedAt() != null
                 && now.isBefore(user.getPasswordResetRequestedAt().plus(properties.resendCooldown()))) {
+            logger.info("Recuperação de senha: envio ignorado; intervalo de reenvio ainda não terminou.");
             return;
         }
         byte[] randomBytes = new byte[32];
@@ -85,7 +91,9 @@ public class PasswordResetService {
                 Este link é de uso único e expira em %d minutos.
                 Se você não solicitou a alteração, ignore esta mensagem. Sua senha permanece a mesma.
                 """.formatted(link, properties.tokenTtl().toMinutes()));
+        logger.info("Recuperação de senha: iniciando envio SMTP.");
         mailSender.send(message);
+        logger.info("Recuperação de senha: mensagem aceita pelo servidor SMTP.");
     }
 
     @Transactional
