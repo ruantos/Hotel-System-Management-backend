@@ -4,6 +4,17 @@ Backend acadêmico em Java 21, Spring Boot 4.1, Spring Data JPA e PostgreSQL.
 Oferece gerenciamento de quartos, características, contas e reservas, com
 sessão HTTP, controle de acesso e documentação OpenAPI.
 
+## Contexto para implementar o front-end
+
+A API possui 36 operações, incluindo solicitação e redefinição de senha.
+Os contratos, DTOs, permissões e erros estão no Swagger e em `/v3/api-docs`.
+A integração utiliza sessão HTTP e CSRF; o navegador pode consumir a API por
+um proxy no Next.js para preservar os cookies no deploy da Vercel.
+
+A seção [Recuperação de senha](#recuperação-de-senha) descreve a habilitação,
+os payloads e os cuidados com envio de e-mail. As credenciais de demonstração
+permanecem no `.env.local` privado e não são versionadas.
+
 ## Executar
 
 1. Instale Java 21.
@@ -146,6 +157,8 @@ iterações; senha e hash não aparecem nas respostas da API.
 | --- | --- | --- |
 | GET | `/api/auth/csrf` | Público; token CSRF, `200` |
 | POST | `/api/auth/register` | Público; cadastro de cliente, `201` |
+| POST | `/api/auth/forgot-password` | Público com CSRF; solicita link por e-mail, `202` |
+| POST | `/api/auth/reset-password` | Público com CSRF; redefine por token, `204` |
 | POST | `/api/auth/login` | Público; formulário de login, `204` |
 | POST | `/api/auth/logout` | Encerra sessão, `204` |
 | GET | `/api/auth/me` | Usuário autenticado, `200` |
@@ -194,6 +207,23 @@ Somente recepcionistas listam usuários, consultam contas de terceiros ou exclue
 usuários. A exclusão é física e recusa contas com qualquer reserva, mesmo
 cancelada. O perfil vinculado é removido junto à conta sem reservas. Não é
 permitido excluir a própria conta de recepção ou o último recepcionista ativo.
+
+## Recuperação de senha
+
+Configure `PASSWORD_RESET_ENABLED=true`, a URL da página `/redefinir-senha`,
+o remetente e as credenciais SMTP, conforme `.env.example`.
+Sem habilitar, as rotas retornam
+`503`; o restante da aplicação continua funcionando.
+
+`POST /api/auth/forgot-password` recebe `{ "email": "cliente@example.com" }`
+e retorna `202` com confirmação genérica. O envio acontece em segundo plano.
+`POST /api/auth/reset-password` recebe `token` e `newPassword` do formulário,
+retorna `204` e revoga sessões. Ambas exigem CSRF, mesmo sem login.
+O link é de uso único, expira em 15 minutos por padrão e não é retornado pela API.
+Falhas de SMTP são registradas sem expor o token; `202` não garante entrega.
+Limites de tentativa retornam `429` e `Retry-After` em segundos.
+No Render gratuito, as portas SMTP 25/465/587 são bloqueadas. Usar um provedor
+com porta alternativa compatível, como 2525 com STARTTLS.
 
 ## Quartos e características: N:N
 
@@ -281,6 +311,8 @@ sempre verifica novamente. Alterar ou excluir quarto usa o mesmo bloqueio.
 - `404`: entidade inexistente ou reserva que pertence a outro cliente.
 - `409`: duplicidade, período ocupado, quarto inativo, vínculo impeditivo ou
   transição de status/prazo não permitida.
+- `429`: limite de tentativas de recuperação ou fila de envio cheia; observar `Retry-After`.
+- `503`: recuperação de senha desabilitada no ambiente.
 
 Erros usam `application/problem+json`, com `type`, `title`, `status` e `detail`.
 Validações de campos incluem `errors`. Dados internos do banco não são expostos.
@@ -314,7 +346,7 @@ A compilação limpa passou. A validação manual no Neon confirmou:
 | Mudança de datas | Período ocupado recusado sem alterar a reserva; novo período livre aceito e status retornado a `PENDING` |
 | Concorrência nas datas | Duas mudanças para o mesmo período retornaram `200` e `409` |
 | Prazos | Alteração no dia da entrada recusada; cancelamento na véspera aceito |
-| Swagger/OpenAPI | 34 operações descritas, contratos e erros presentes, recursos locais servidos com `200` |
+| Swagger/OpenAPI | 36 operações descritas, incluindo as duas de recuperação; contratos e erros presentes, recursos locais servidos com `200` |
 | CSRF do Swagger | JavaScript executado contra a API: login, logout e novo login com renovação automática do token |
 
 O acesso ao navegador automatizado estava indisponível; não houve inspeção
@@ -326,8 +358,22 @@ A verificação é por compilação e execução manual no PostgreSQL remoto, co
 o escopo acadêmico. Não há banco em memória nem infraestrutura de testes
 automatizados. O histórico Git deve identificar a participação dos integrantes.
 
+### Validação da recuperação de senha em 20/11/2026
+
+O empacotamento Maven com Java 21 passou. Os fluxos HTTP foram verificados em
+um esquema temporário isolado no PostgreSQL configurado, com captura SMTP local:
+resposta genérica, CSRF, validações, hash/expiração, intervalo de reenvio,
+substituição e consumo único do token, revogação de sessões, alteração de
+conta/senha e consumo concorrente (`204`/`400`). Também foram conferidos `429`
+com Retry-After, sua exposição no CORS, modo desabilitado (`503`) e rollback
+após falha simulada de SMTP, preservando o link anterior.
+
+O processo e o esquema temporário foram removidos, sem alterar registros
+preexistentes. Não houve envio externo de e-mail. Entrega por um provedor SMTP
+real e funcionamento no deploy dependem da configuração do ambiente.
+
 A integração com frontend está adiada. Não fazem parte desta entrega pagamentos,
-reembolsos, notificações, recuperação de senha, check-in/check-out operacionais,
+reembolsos, notificações gerais, check-in/check-out operacionais,
 rejeição ou exclusão física de reservas e cálculos financeiros de hospedagem.
 O contrato de alteração de reserva abrange as datas; quarto e hóspedes são
 preservados. A quantidade de entidades atende a equipes de até seis integrantes.

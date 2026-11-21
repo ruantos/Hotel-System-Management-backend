@@ -1,5 +1,7 @@
 package com.hotelmanagement.entity;
 
+import java.time.Instant;
+
 import com.hotelmanagement.enums.UserRole;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -36,6 +38,13 @@ public class User {
 
     @Column(nullable = false, columnDefinition = "bigint default 0")
     private long sessionVersion;
+
+    @Column(unique = true, length = 64)
+    private String passwordResetTokenHash;
+
+    private Instant passwordResetExpiresAt;
+
+    private Instant passwordResetRequestedAt;
 
     public User() {
     }
@@ -90,5 +99,21 @@ public class User {
 
     public void invalidateSessions() {
         sessionVersion++;
+        passwordResetTokenHash = null;
+        passwordResetExpiresAt = null;
+    }
+
+    public Instant getPasswordResetExpiresAt() {
+        return passwordResetExpiresAt;
+    }
+
+    public Instant getPasswordResetRequestedAt() {
+        return passwordResetRequestedAt;
+    }
+
+    public void beginPasswordReset(String tokenHash, Instant expiresAt, Instant requestedAt) {
+        passwordResetTokenHash = tokenHash;
+        passwordResetExpiresAt = expiresAt;
+        passwordResetRequestedAt = requestedAt;
     }
 }
