@@ -225,6 +225,18 @@ Limites de tentativa retornam `429` e `Retry-After` em segundos.
 No Render gratuito, as portas SMTP 25/465/587 são bloqueadas. Usar um provedor
 com porta alternativa compatível, como 2525 com STARTTLS.
 
+Para investigar um pedido aceito sem recebimento, consulte os logs do backend.
+Eles indicam processamento, conta inexistente/inativa, intervalo de reenvio,
+início do envio e aceite pelo servidor SMTP. Em falhas, `tipos` identifica as
+exceções e `codigosSMTP` informa códigos de rejeição disponíveis, sem registrar
+e-mail, senha, corpo da mensagem ou link de recuperação. `MailAuthenticationException`
+ou código `535` apontam para autenticação; `UnknownHostException`, `ConnectException`
+e `SocketTimeoutException` apontam para DNS, conexão e timeout. Na Brevo, `450`
+pode indicar que o envio transacional da conta ainda não foi ativado; confira o
+status em Transacional e a [documentação de diagnóstico do provedor](https://help.brevo.com/hc/en-us/articles/115000188150-Troubleshooting-Issues-with-Brevo-SMTP).
+O aceite SMTP não confirma entrega na caixa de entrada: a etapa seguinte deve
+ser conferida nos logs transacionais do provedor.
+
 ## Quartos e características: N:N
 
 `Amenity` representa uma característica da acomodação, como Wi-Fi,
