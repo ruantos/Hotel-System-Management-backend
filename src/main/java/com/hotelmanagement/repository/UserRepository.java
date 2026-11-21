@@ -31,4 +31,8 @@ public interface UserRepository extends JpaRepository<User, Long> {
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("select u from User u where lower(u.email) = lower(:email)")
     Optional<User> findLockedByEmail(@Param("email") String email);
+
+    @Lock(LockModeType.PESSIMISTIC_WRITE)
+    @Query("select u from User u where u.passwordResetTokenHash = :tokenHash")
+    Optional<User> findLockedByPasswordResetTokenHash(@Param("tokenHash") String tokenHash);
 }

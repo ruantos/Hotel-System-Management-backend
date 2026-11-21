@@ -46,6 +46,12 @@ public class OpenApiConfig {
                         características, tipos, usuários e aprova reservas. Apenas RECEPTIONIST exclui usuários.
                         Alterar a própria conta ou senha encerra suas sessões e exige novo login.
 
+                        Recuperação de senha: POST /api/auth/forgot-password aceita e-mail e retorna 202
+                        genérico; o link é enviado por SMTP em segundo plano quando a funcionalidade está
+                        habilitada. POST /api/auth/reset-password recebe token e newPassword e retorna 204.
+                        Ambos são públicos e exigem CSRF. Tokens expiram, são de uso único e não aparecem
+                        nas respostas. A redefinição revoga sessões e não autentica automaticamente.
+
                         Reservas PENDING e APPROVED bloqueiam o período [entrada, saída). Cancelamento e
                         mudança de datas só são permitidos antes do dia da entrada atual. Alterar datas de
                         uma reserva aprovada exige nova aprovação e passa seu status para PENDING.
@@ -88,8 +94,11 @@ public class OpenApiConfig {
     private void document(String path, PathItem.HttpMethod method, Operation operation) {
         boolean read = method == PathItem.HttpMethod.GET;
         boolean filterEndpoint = path.equals("/api/auth/login") || path.equals("/api/auth/logout");
+        boolean forgotPassword = path.equals("/api/auth/forgot-password");
+        boolean resetPassword = path.equals("/api/auth/reset-password");
+        boolean passwordResetEndpoint = forgotPassword || resetPassword;
         boolean publicEndpoint = path.equals("/api/auth/csrf") || path.equals("/api/auth/register")
-                || filterEndpoint || (read && (path.startsWith("/api/rooms")
+                || passwordResetEndpoint || filterEndpoint || (read && (path.startsWith("/api/rooms")
                 || path.startsWith("/api/room-types") || path.startsWith("/api/amenities")));
         String tag = path.startsWith("/api/auth") ? "Autenticação"
                 : path.startsWith("/api/users") ? "Contas"
@@ -116,13 +125,15 @@ public class OpenApiConfig {
             responses = new ApiResponses();
             operation.setResponses(responses);
         }
-        String success = method == PathItem.HttpMethod.DELETE || path.endsWith("/password") ? "204"
+        String success = forgotPassword ? "202"
+                : resetPassword || method == PathItem.HttpMethod.DELETE || path.endsWith("/password") ? "204"
                 : method == PathItem.HttpMethod.POST ? "201" : "200";
         ApiResponse successResponse = responses.remove("200");
         if (successResponse == null) {
             successResponse = new ApiResponse();
         }
-        successResponse.setDescription(success.equals("201") ? "Registro criado."
+        successResponse.setDescription(forgotPassword ? "Solicitação aceita para processamento; resposta genérica sem revelar se a conta existe."
+                : success.equals("201") ? "Registro criado."
                 : success.equals("204") ? "Operação concluída sem corpo de resposta." : "Operação concluída.");
         if (success.equals("204")) {
             successResponse.setContent(null);
@@ -144,8 +155,14 @@ public class OpenApiConfig {
         if (path.contains("{id}") || !read && (path.equals("/api/rooms") || path.equals("/api/reservations"))) {
             responses.addApiResponse("404", problem("Registro inexistente ou reserva não pertencente ao cliente."));
         }
-        if (!read && !path.endsWith("/password")) {
+        if (!read && !path.endsWith("/password") && !passwordResetEndpoint) {
             responses.addApiResponse("409", problem("Conflito de disponibilidade, duplicidade, vínculo existente ou transição não permitida."));
+        }
+        if (passwordResetEndpoint) {
+            responses.addApiResponse("429", problem("Muitas tentativas ou fila de envio cheia; aguarde Retry-After segundos.")
+                    .addHeaderObject("Retry-After", new Header().description("Segundos até uma nova tentativa.")
+                            .schema(new IntegerSchema())));
+            responses.addApiResponse("503", problem("Recuperação de senha desabilitada no ambiente."));
         }
     }
 
@@ -155,6 +172,8 @@ public class OpenApiConfig {
             case "/api/auth/login" -> "Iniciar sessão";
             case "/api/auth/logout" -> "Encerrar sessão";
             case "/api/auth/register" -> "Cadastrar cliente";
+            case "/api/auth/forgot-password" -> "Solicitar recuperação de senha";
+            case "/api/auth/reset-password" -> "Redefinir senha por token";
             case "/api/auth/me" -> "Consultar usuário autenticado";
             case "/api/users/me" -> method == PathItem.HttpMethod.GET ? "Consultar minha conta" : "Atualizar minha conta";
             case "/api/users/me/password" -> "Alterar minha senha";
@@ -174,6 +193,12 @@ public class OpenApiConfig {
     }
 
     private String details(String path) {
+        if (path.equals("/api/auth/forgot-password")) {
+            return "Recebe JSON com email. Retorna 202 com message idêntica para conta ativa, inativa, inexistente ou reenvio no intervalo mínimo. O envio SMTP é assíncrono; 202 não confirma a entrega do e-mail. Por padrão, token válido por 15 minutos e reenvio após 60 segundos. Limite de 20 solicitações por IP em 15 minutos. Funcionalidade depende de configuração no servidor.";
+        }
+        if (path.equals("/api/auth/reset-password")) {
+            return "Recebe JSON com token e newPassword (8 a 128 caracteres). Token opaco do link, de uso único; inválido, usado ou expirado retorna 400. Redefinição revoga sessões e encerra a sessão atual, sem login automático. Obtenha novo CSRF antes de entrar. Limite de 30 tentativas por IP em 15 minutos.";
+        }
         if (path.endsWith("/dates")) {
             return "Datas ISO AAAA-MM-DD. Apenas antes da entrada atual; períodos livres são revalidados com bloqueio do quarto. Datas alteradas tornam a reserva PENDING; datas idênticas preservam o status.";
         }
